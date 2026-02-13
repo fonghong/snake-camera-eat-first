@@ -165,8 +165,9 @@
                 instructions: "電腦：方向鍵控制<br>手機：滑動螢幕 或 點擊虛擬鍵",
                 speed: "選擇速度 (Speed)",
                 skin: "自定義皮膚",
-                body: "🐍 蛇身:",
-                food: "🍎 食物:",
+                // Added whitespace-nowrap to prevent text from breaking into two lines
+                body: '<div class="flex flex-col items-center leading-none gap-1"><span>🐍</span><span class="text-xs whitespace-nowrap">蛇身</span></div>',
+                food: '<div class="flex flex-col items-center leading-none gap-1"><span>🍎</span><span class="text-xs whitespace-nowrap">食物</span></div>',
                 upload: "上傳圖片",
                 start: "開始遊戲",
                 retry: "再來一次",
@@ -203,8 +204,11 @@
             document.getElementById('overlaySub').innerHTML = t.instructions;
             document.getElementById('levelLabel').textContent = t.speed;
             document.getElementById('skinTitle').textContent = t.skin;
-            document.getElementById('snakeLabel').textContent = t.body;
-            document.getElementById('foodLabel').textContent = t.food;
+            
+            // Changed from textContent to innerHTML to support the HTML structure in translations
+            document.getElementById('snakeLabel').innerHTML = t.body;
+            document.getElementById('foodLabel').innerHTML = t.food;
+            
             document.querySelectorAll('.upload-text').forEach(el => el.textContent = t.upload);
 
             const overlayTitle = document.getElementById('overlayTitle');
@@ -502,5 +506,3 @@
     </script>
 </body>
 </html>
-
-

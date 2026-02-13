@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>貪食蛇：相機食先 (Snake: Camera Eats First)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=DotGothic16&display=swap');
+        
+        body {
+            font-family: 'DotGothic16', sans-serif;
+            background-color: #1a1a1a;
+            color: #e5e5e5;
+            overflow: hidden; /* Prevent scrolling on mobile */
+            touch-action: none; /* Disable default touch actions */
+        }
+
+        #gameCanvas {
+            box-shadow: 0 0 20px rgba(0, 255, 100, 0.2);
+            image-rendering: pixelated; /* Keeps pixel art look */
+        }
+
+        .pixel-btn {
+            box-shadow: 4px 4px 0px 0px #000;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .pixel-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0px 0px #000;
+        }
+        
+        .level-btn.selected {
+            background-color: #fbbf24; /* yellow-400 */
+            color: black;
+            border-color: #fbbf24;
+        }
+
+        /* Virtual D-Pad Styling */
+        .d-pad-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        .d-pad-btn:active {
+            background: rgba(0, 255, 100, 0.4);
+            border-color: #00ff64;
+        }
+
+        /* Lang Switcher */
+        .lang-switch {
+            font-size: 0.8rem;
+            border: 1px solid #666;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.5);
+            cursor: pointer;
+            pointer-events: auto; /* Ensure clickable */
+        }
+        .lang-switch:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: #999;
+        }
+
+        /* Hide scrollbar for settings panel */
+        .hide-scroll::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center relative">
+
+    <!-- Header: Score & Title & Lang -->
+    <div class="absolute top-4 w-full px-4 md:px-6 flex justify-between items-start z-30 pointer-events-none">
+        <div class="pointer-events-auto">
+            <!-- Language Switcher -->
+            <button id="langBtn" class="lang-switch mb-2 text-gray-300 font-sans" onclick="toggleLanguage()">EN / 中</button>
+            
+            <h1 id="titleText" class="text-xl md:text-4xl text-green-400 font-bold drop-shadow-md leading-tight">貪食蛇：相機食先</h1>
+            <p class="text-xs md:text-sm text-gray-400 mt-1">Lv <span id="currentLevelDisplay">1</span></p>
+        </div>
+        <div class="text-right">
+            <div id="scoreLabel" class="text-sm text-gray-400">SCORE</div>
+            <div id="scoreEl" class="text-4xl font-bold text-white">0</div>
+        </div>
+    </div>
+
+    <!-- Main Game Area -->
+    <div class="relative flex-grow flex items-center justify-center w-full h-full p-4">
+        <canvas id="gameCanvas" class="bg-gray-900 border-4 border-gray-700 rounded-lg"></canvas>
+        
+        <!-- Start/Game Over Overlay -->
+        <div id="overlay" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20 pointer-events-auto transition-opacity duration-300 overflow-y-auto">
+            <h2 id="overlayTitle" class="text-5xl text-green-400 mb-2 animate-pulse mt-12 md:mt-0 text-center px-2">PRESS START</h2>
+            <p id="overlaySub" class="text-gray-400 text-sm mb-6 text-center leading-relaxed">
+                電腦：方向鍵控制<br>手機：滑動螢幕 或 點擊虛擬鍵
+            </p>
+            
+            <!-- Customization Section -->
+            <div class="bg-gray-800 p-5 rounded-lg border-2 border-gray-600 mb-4 w-11/12 max-w-sm">
+                
+                <!-- Level Selection -->
+                <div class="mb-5">
+                    <p id="levelLabel" class="text-sm text-gray-400 mb-2 text-center">選擇速度 (Speed)</p>
+                    <div class="flex justify-between gap-2" id="levelSelector">
+                        <button class="pixel-btn level-btn flex-1 py-2 border border-gray-500 rounded text-xs selected" onclick="selectLevel(1)">1</button>
+                        <button class="pixel-btn level-btn flex-1 py-2 border border-gray-500 rounded text-xs" onclick="selectLevel(2)">2</button>
+                        <button class="pixel-btn level-btn flex-1 py-2 border border-gray-500 rounded text-xs" onclick="selectLevel(3)">3</button>
+                        <button class="pixel-btn level-btn flex-1 py-2 border border-gray-500 rounded text-xs" onclick="selectLevel(4)">4</button>
+                        <button class="pixel-btn level-btn flex-1 py-2 border border-gray-500 rounded text-xs" onclick="selectLevel(5)">5</button>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-600 my-4"></div>
+
+                <!-- Image Upload -->
+                <h3 id="skinTitle" class="text-lg text-yellow-400 mb-3 text-center">自定義皮膚</h3>
+                <div class="space-y-4">
+                    <!-- Snake Body Upload -->
+                    <div class="flex items-center justify-between">
+                        <span id="snakeLabel" class="text-sm">🐍 蛇身:</span>
+                        <label class="pixel-btn bg-green-600 hover:bg-green-500 text-white text-xs py-2 px-3 rounded cursor-pointer flex items-center justify-center min-w-[80px]">
+                            <span class="upload-text">上傳圖片</span>
+                            <input type="file" accept="image/*" class="hidden" onchange="handleImageUpload(event, 'snake')">
+                        </label>
+                        <div id="preview-snake" class="w-10 h-10 bg-green-500 border border-white ml-2 bg-cover bg-center rounded-sm flex-shrink-0"></div>
+                    </div>
+
+                    <!-- Food Upload -->
+                    <div class="flex items-center justify-between">
+                        <span id="foodLabel" class="text-sm">🍎 食物:</span>
+                        <label class="pixel-btn bg-red-600 hover:bg-red-500 text-white text-xs py-2 px-3 rounded cursor-pointer flex items-center justify-center min-w-[80px]">
+                            <span class="upload-text">上傳圖片</span>
+                            <input type="file" accept="image/*" class="hidden" onchange="handleImageUpload(event, 'food')">
+                        </label>
+                        <div id="preview-food" class="w-10 h-10 bg-red-500 border border-white ml-2 bg-cover bg-center rounded-sm flex-shrink-0"></div>
+                    </div>
+                </div>
+            </div>
+
+            <button id="startBtn" class="pixel-btn bg-yellow-400 text-black text-xl font-bold py-3 px-10 rounded mb-8 shadow-lg hover:scale-105 transition-transform">
+                開始遊戲
+            </button>
+        </div>
+    </div>
+
+    <!-- Virtual D-Pad -->
+    <div id="virtual-controls" class="absolute bottom-6 left-0 right-0 flex justify-center items-center gap-4 z-10 pb-safe md:hidden">
+        <div class="grid grid-cols-3 gap-2">
+            <div></div>
+            <button class="d-pad-btn w-14 h-14" ontouchstart="handleVirtualInput('ArrowUp')" onmousedown="handleVirtualInput('ArrowUp')">▲</button>
+            <div></div>
+            <button class="d-pad-btn w-14 h-14" ontouchstart="handleVirtualInput('ArrowLeft')" onmousedown="handleVirtualInput('ArrowLeft')">◀</button>
+            <button class="d-pad-btn w-14 h-14" ontouchstart="handleVirtualInput('ArrowDown')" onmousedown="handleVirtualInput('ArrowDown')">▼</button>
+            <button class="d-pad-btn w-14 h-14" ontouchstart="handleVirtualInput('ArrowRight')" onmousedown="handleVirtualInput('ArrowRight')">▶</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Localization Config ---
+        const translations = {
+            zh: {
+                title: "貪食蛇：相機食先",
+                score: "分數",
+                pressStart: "按此開始",
+                instructions: "電腦：方向鍵控制<br>手機：滑動螢幕 或 點擊虛擬鍵",
+                speed: "選擇速度 (Speed)",
+                skin: "自定義皮膚",
+                body: "🐍 蛇身:",
+                food: "🍎 食物:",
+                upload: "上傳圖片",
+                start: "開始遊戲",
+                retry: "再來一次",
+                gameover: "遊戲結束"
+            },
+            en: {
+                title: "Snake: Camera Eats First",
+                score: "SCORE",
+                pressStart: "PRESS START",
+                instructions: "Desktop: Arrow Keys<br>Mobile: Swipe or use D-Pad",
+                speed: "Select Speed",
+                skin: "Customize Skins",
+                body: "🐍 Body:",
+                food: "🍎 Food:",
+                upload: "Upload Img",
+                start: "START GAME",
+                retry: "PLAY AGAIN",
+                gameover: "GAME OVER"
+            }
+        };
+
+        let currentLang = 'zh';
+        let isGameOverState = false;
+
+        function toggleLanguage() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            updateUIText();
+        }
+
+        function updateUIText() {
+            const t = translations[currentLang];
+            
+            document.getElementById('titleText').textContent = t.title;
+            document.getElementById('scoreLabel').textContent = t.score;
+            document.getElementById('overlaySub').innerHTML = t.instructions;
+            document.getElementById('levelLabel').textContent = t.speed;
+            document.getElementById('skinTitle').textContent = t.skin;
+            document.getElementById('snakeLabel').textContent = t.body;
+            document.getElementById('foodLabel').textContent = t.food;
+            
+            // Update all upload buttons
+            document.querySelectorAll('.upload-text').forEach(el => el.textContent = t.upload);
+
+            // Handle Dynamic Titles (Start vs Game Over)
+            const overlayTitle = document.getElementById('overlayTitle');
+            const startBtn = document.getElementById('startBtn');
+
+            if (isGameOverState) {
+                overlayTitle.textContent = t.gameover;
+                startBtn.textContent = t.retry;
+            } else {
+                overlayTitle.textContent = t.pressStart;
+                startBtn.textContent = t.start;
+            }
+        }
+
+        // --- Game Config ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('scoreEl');
+        const currentLevelDisplay = document.getElementById('currentLevelDisplay');
+        const overlay = document.getElementById('overlay');
+        const overlayTitle = document.getElementById('overlayTitle');
+        const startBtn = document.getElementById('startBtn');
+        const previewSnake = document.getElementById('preview-snake');
+        const previewFood = document.getElementById('preview-food');
+
+        // Logic Variables
+        let gridSize = 30; // Increased size for better visibility
+        let tileCountX = 20;
+        let tileCountY = 20;
+        let snake = [];
+        let food = { x: 10, y: 10 };
+        let dx = 0;
+        let dy = 0;
+        let nextDx = 0;
+        let nextDy = 0;
+        let score = 0;
+        let gameLoopId;
+        let isGameRunning = false;
+        
+        // Level Settings
+        let currentLevel = 1;
+        const levelSpeeds = {
+            1: 250, // Slowest
+            2: 180,
+            3: 130, // Normal
+            4: 90,
+            5: 60   // Insane
+        };
+
+        // Images (Canvas patterns)
+        const assets = {
+            snake: null,
+            food: null
+        };
+
+        // --- Level Selection ---
+        window.selectLevel = (lv) => {
+            currentLevel = lv;
+            // Update UI classes
+            document.querySelectorAll('.level-btn').forEach(btn => {
+                btn.classList.remove('selected');
+                if (parseInt(btn.innerText) === lv) {
+                    btn.classList.add('selected');
+                }
+            });
+        };
+
+        // --- Resizing Logic ---
+        function resizeCanvas() {
+            // Calculate available space
+            const maxWidth = window.innerWidth - 32; // padding
+            const maxHeight = window.innerHeight - 200; // Leave space for UI/Controls
+            
+            // Determine largest possible grid size
+            // We aim for approx 30px, but fit to screen
+            
+            const cols = Math.floor(maxWidth / gridSize);
+            const rows = Math.floor(maxHeight / gridSize);
+
+            // Ensure minimum playable area
+            tileCountX = Math.max(10, cols);
+            tileCountY = Math.max(10, rows);
+            
+            canvas.width = tileCountX * gridSize;
+            canvas.height = tileCountY * gridSize;
+
+            // Redraw if game isn't running to show grid
+            if (!isGameRunning) {
+                // If it's the very first load or resize on pause
+                // Only draw if we have data, otherwise clear
+                if (snake.length > 0) {
+                    drawGame();
+                } else {
+                    ctx.fillStyle = '#111';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                }
+            }
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        // Initial resize happens in script exec, but safer to wait or init in game
+        resizeCanvas();
+
+        // --- Image Processing (Center Crop) ---
+        function handleImageUpload(event, type) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Create offscreen canvas to process image
+                    const tempCanvas = document.createElement('canvas');
+                    // Increased resolution for better quality on larger tiles
+                    const size = 128; 
+                    tempCanvas.width = size;
+                    tempCanvas.height = size;
+                    const tCtx = tempCanvas.getContext('2d');
+
+                    // Math for Center Crop
+                    const minDim = Math.min(img.width, img.height);
+                    const sx = (img.width - minDim) / 2;
+                    const sy = (img.height - minDim) / 2;
+
+                    // Draw cropped image onto temp canvas
+                    tCtx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+
+                    // Save as asset
+                    assets[type] = tempCanvas;
+
+                    // Update UI Preview
+                    const previewEl = type === 'snake' ? previewSnake : previewFood;
+                    previewEl.style.backgroundImage = `url(${tempCanvas.toDataURL()})`;
+                    previewEl.textContent = ''; // remove text if any
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // --- Game Logic ---
+        function initGame() {
+            resizeCanvas(); // Ensure size matches current window
+            
+            // 1. Reset Logic State
+            snake = [
+                { x: Math.floor(tileCountX / 2), y: Math.floor(tileCountY / 2) }
+            ];
+            score = 0;
+            scoreEl.innerText = score;
+            currentLevelDisplay.innerText = currentLevel;
+            dx = 0;
+            dy = 0;
+            nextDx = 0;
+            nextDy = 0; // Stationary at start
+            
+            // 2. Place New Food
+            placeFood();
+            
+            // 3. Reset State Flags
+            isGameRunning = true;
+            isGameOverState = false; 
+            
+            // 4. Update UI
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.style.display = 'none', 300);
+            
+            // 5. Start Loop
+            if (gameLoopId) clearInterval(gameLoopId);
+            const speed = levelSpeeds[currentLevel];
+            gameLoopId = setInterval(gameStep, speed);
+
+            // 6. Force Draw NOW (Fix for retry ghosting)
+            // This ensures the user sees the new snake/food immediately
+            drawGame();
+        }
+
+        function gameStep() {
+            // Apply buffered direction
+            if (nextDx !== 0 || nextDy !== 0) {
+                dx = nextDx;
+                dy = nextDy;
+            }
+
+            if (dx === 0 && dy === 0) return; // Don't move if paused/start
+
+            // Calculate new head position
+            const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+            // Wall Collision Check (Wrap around or Game Over? Let's do Game Over for classic feel)
+            if (head.x < 0 || head.x >= tileCountX || head.y < 0 || head.y >= tileCountY) {
+                gameOver();
+                return;
+            }
+
+            // Self Collision Check
+            for (let part of snake) {
+                if (head.x === part.x && head.y === part.y) {
+                    gameOver();
+                    return;
+                }
+            }
+
+            snake.unshift(head); // Add new head
+
+            // Food Check
+            if (head.x === food.x && head.y === food.y) {
+                score++;
+                scoreEl.innerText = score;
+                // Don't pop tail (grow)
+                placeFood();
+            } else {
+                snake.pop(); // Remove tail
+            }
+
+            drawGame();
+        }
+
+        function placeFood() {
+            let valid = false;
+            while (!valid) {
+                food.x = Math.floor(Math.random() * tileCountX);
+                food.y = Math.floor(Math.random() * tileCountY);
+                
+                valid = true;
+                // Check if food spawns on snake body
+                for (let part of snake) {
+                    if (part.x === food.x && part.y === food.y) {
+                        valid = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        function drawGame() {
+            // Clear
+            ctx.fillStyle = '#111'; // Grid bg
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Grid Lines (Subtle)
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1;
+            for(let i=0; i<=tileCountX; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i*gridSize, 0);
+                ctx.lineTo(i*gridSize, canvas.height);
+                ctx.stroke();
+            }
+            for(let i=0; i<=tileCountY; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, i*gridSize);
+                ctx.lineTo(canvas.width, i*gridSize);
+                ctx.stroke();
+            }
+
+            // Draw Food
+            if (assets.food) {
+                ctx.drawImage(assets.food, food.x * gridSize, food.y * gridSize, gridSize, gridSize);
+            } else {
+                ctx.fillStyle = '#ef4444'; // default red
+                ctx.beginPath();
+                // Make slightly smaller than grid
+                const pad = 2;
+                ctx.roundRect(food.x * gridSize + pad, food.y * gridSize + pad, gridSize - (pad*2), gridSize - (pad*2), 4);
+                ctx.fill();
+            }
+
+            // Draw Snake
+            snake.forEach((part, index) => {
+                if (assets.snake) {
+                    // Use custom image
+                    ctx.drawImage(assets.snake, part.x * gridSize, part.y * gridSize, gridSize, gridSize);
+                    // Add a slight overlay for the head
+                    if (index === 0) {
+                        ctx.strokeStyle = '#fff';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(part.x * gridSize, part.y * gridSize, gridSize, gridSize);
+                    }
+                } else {
+                    // Default Style
+                    ctx.fillStyle = index === 0 ? '#4ade80' : '#22c55e'; // Light green head
+                    const pad = 1;
+                    ctx.beginPath();
+                    ctx.roundRect(part.x * gridSize + pad, part.y * gridSize + pad, gridSize - (pad*2), gridSize - (pad*2), 4);
+                    ctx.fill();
+                }
+            });
+        }
+
+        function gameOver() {
+            isGameRunning = false;
+            isGameOverState = true; // Mark state
+            clearInterval(gameLoopId);
+            
+            // Force update UI to show Game Over text in correct lang
+            updateUIText(); 
+
+            overlayTitle.classList.add('text-red-500');
+            overlayTitle.classList.remove('text-green-400');
+            
+            overlay.style.display = 'flex';
+            setTimeout(() => overlay.style.opacity = '1', 10);
+        }
+
+        // --- Input Handling ---
+
+        function handleInput(key) {
+            // Prevent reversing direction directly
+            if (key === 'ArrowUp' && dy === 1) return;
+            if (key === 'ArrowDown' && dy === -1) return;
+            if (key === 'ArrowLeft' && dx === 1) return;
+            if (key === 'ArrowRight' && dx === -1) return;
+
+            switch(key) {
+                case 'ArrowUp': nextDx = 0; nextDy = -1; break;
+                case 'ArrowDown': nextDx = 0; nextDy = 1; break;
+                case 'ArrowLeft': nextDx = -1; nextDy = 0; break;
+                case 'ArrowRight': nextDx = 1; nextDy = 0; break;
+            }
+            
+            // If game hasn't started movement yet (start of game), apply immediately
+            if (dx === 0 && dy === 0 && isGameRunning) {
+                dx = nextDx;
+                dy = nextDy;
+            }
+        }
+
+        // 1. Keyboard
+        document.addEventListener('keydown', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault(); // prevent scroll
+                handleInput(e.key);
+            }
+        });
+
+        // 2. Virtual Buttons
+        window.handleVirtualInput = (key) => {
+            if (window.navigator.vibrate) window.navigator.vibrate(10); // Haptic
+            handleInput(key);
+        };
+
+        // 3. Swipe Detection
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY;
+        }, {passive: false});
+
+        document.addEventListener('touchend', (e) => {
+            if (!isGameRunning) return;
+            
+            let touchEndX = e.changedTouches[0].screenX;
+            let touchEndY = e.changedTouches[0].screenY;
+            
+            handleSwipe(touchStartX, touchStartY, touchEndX, touchEndY);
+        }, {passive: false});
+
+        function handleSwipe(sx, sy, ex, ey) {
+            let xDiff = ex - sx;
+            let yDiff = ey - sy;
+            
+            if (Math.abs(xDiff) < 30 && Math.abs(yDiff) < 30) return; // Tap, not swipe
+
+            if (Math.abs(xDiff) > Math.abs(yDiff)) {
+                // Horizontal
+                handleInput(xDiff > 0 ? 'ArrowRight' : 'ArrowLeft');
+            } else {
+                // Vertical
+                handleInput(yDiff > 0 ? 'ArrowDown' : 'ArrowUp');
+            }
+        }
+
+        // Start Button
+        startBtn.addEventListener('click', () => {
+            // Reset overlay style if retrying from game over
+            overlayTitle.classList.remove('text-red-500');
+            overlayTitle.classList.add('text-green-400');
+            initGame();
+        });
+
+        // Init Language
+        updateUIText();
+        // Initial Draw
+        drawGame();
+
+    </script>
+</body>
+</html>
